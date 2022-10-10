@@ -159,7 +159,12 @@ module VCAP::CloudController
           begin
             result = action.bind(binding, parameters: binding_message.parameters)
             if result[:async]
-              raise ServiceBrokerRespondedAsyncWhenNotAllowed
+              poll_result = action.poll(binding)
+              until poll_result[:finished]
+                # TODO: sleep for 'retry_after' amount or fallback to default if header was not sent
+                # TODO: dont create bindings serially
+                poll_result = action.poll(binding)
+              end
             end
           rescue ServiceBrokerRespondedAsyncWhenNotAllowed,
                  V3::ServiceBindingCreate::BindingNotRetrievable

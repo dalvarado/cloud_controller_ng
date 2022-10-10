@@ -848,35 +848,60 @@ module VCAP::CloudController
               end
             end
 
-            context 'service binding errors' do
-              context 'bind happens async' do
-                context 'action starts async binding' do
-                  before do
-                    allow(service_cred_binding_create).to receive(:bind).and_return({ async: true })
-                  end
-
-                  it 'raises an error' do
-                    expect {
-                      app_apply_manifest.apply(app.guid, message)
-                    }.to raise_error(AppApplyManifest::ServiceBindingError,
-/For service 'si-name': The service broker responded asynchronously, but async bindings are not supported./)
-                  end
+            context 'bind happens async' do
+              context 'action starts async binding' do
+                before do
+                  allow(service_cred_binding_create).to receive(:bind).and_return({ async: true })
+                  allow(service_cred_binding_create).to receive(:poll).and_return(V3::ServiceBindingCreate::ContinuePolling.call(1.second),
+                                                                                  V3::ServiceBindingCreate::ContinuePolling.call(1.second),
+                                                                                  V3::ServiceBindingCreate::PollingFinished,
+                                                                                  V3::ServiceBindingCreate::ContinuePolling.call(1.second),
+                                                                                  V3::ServiceBindingCreate::PollingFinished)
                 end
 
-                context 'bind fails with BindingNotRetrievable' do
-                  before do
-                    allow(service_cred_binding_create).to receive(:bind).and_raise(V3::ServiceBindingCreate::BindingNotRetrievable)
-                  end
-
-                  it 'fails with async error' do
-                    expect {
-                      app_apply_manifest.apply(app.guid, message)
-                    }.to raise_error(AppApplyManifest::ServiceBindingError,
-/For service 'si-name': The service broker responded asynchronously, but async bindings are not supported./)
-                  end
+                it 'polls service bindings until they are complete' do
+                  expect(service_cred_binding_create).to receive(:poll).exactly(5).times
+                  app_apply_manifest.apply(app.guid, message)
                 end
               end
 
+              context 'async binding fails' do
+                before do
+                  allow(service_cred_binding_create).to receive(:bind).and_return({ async: true })
+                  count = 0
+                  allow(service_cred_binding_create).to receive(:poll) do
+                    count += 1
+                    if count == 3
+                      raise V3::LastOperationFailedState
+                    else
+                      V3::ServiceBindingCreate::ContinuePolling.call(1.second)
+                    end
+                  end
+                end
+
+                it 'polls service bindings until they are complete' do
+                  expect(service_cred_binding_create).to receive(:poll).exactly(3).times
+                  expect {
+                    app_apply_manifest.apply(app.guid, message)
+                  }.to raise_error(AppApplyManifest::ServiceBindingError)
+                end
+              end
+
+              context 'bind fails with BindingNotRetrievable' do
+                before do
+                  allow(service_cred_binding_create).to receive(:bind).and_raise(V3::ServiceBindingCreate::BindingNotRetrievable)
+                end
+
+                it 'fails with async error' do
+                  expect {
+                    app_apply_manifest.apply(app.guid, message)
+                  }.to raise_error(AppApplyManifest::ServiceBindingError,
+                                   /For service 'si-name': The service broker responded asynchronously, but async bindings are not supported./)
+                end
+              end
+            end
+
+            context 'service binding errors' do
               context 'generic binding errors' do
                 before do
                   allow(service_cred_binding_create).to receive(:bind).and_raise('fake binding error')
