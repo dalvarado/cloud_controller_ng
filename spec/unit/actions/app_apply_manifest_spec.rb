@@ -725,7 +725,9 @@ module VCAP::CloudController
 
             before do
               allow(ServiceCredentialAppBindingCreateMessage).to receive(:new).and_return(service_binding_create_message_1, service_binding_create_message_2)
-              allow(service_cred_binding_create).to receive(:bind).and_return({ async: false })
+              allow(service_cred_binding_create).to receive(:bind) { ServiceBinding.make }
+              allow_any_instance_of(ServiceBinding).to receive(:terminal_state?).and_return true
+
               allow(service_cred_binding_create).to receive(:precursor).and_return(ServiceBinding.make)
               allow(service_binding_create_message_1).to receive(:audit_hash).and_return({ foo: 'bar-1' })
               allow(service_binding_create_message_1).to receive(:parameters)
@@ -796,8 +798,8 @@ module VCAP::CloudController
 
               app_apply_manifest.apply(app.guid, message)
 
-              expect(service_cred_binding_create).to have_received(:bind).with(service_binding_1, parameters: nil)
-              expect(service_cred_binding_create).to have_received(:bind).with(service_binding_2, parameters: { 'foo' => 'bar' })
+              expect(service_cred_binding_create).to have_received(:bind).with(service_binding_1, parameters: nil, accepts_incomplete: true)
+              expect(service_cred_binding_create).to have_received(:bind).with(service_binding_2, parameters: { 'foo' => 'bar' }, accepts_incomplete: true)
             end
 
             it 'wraps the error when precursor errors' do
@@ -828,7 +830,7 @@ module VCAP::CloudController
 
                   app_apply_manifest.apply(app.guid, message)
 
-                  expect(service_cred_binding_create).to have_received(:bind).with(binding, parameters: nil)
+                  expect(service_cred_binding_create).to have_received(:bind).with(binding, parameters: nil, accepts_incomplete: true)
                 end
               end
             end
@@ -837,7 +839,6 @@ module VCAP::CloudController
               let(:message) { AppManifestMessage.create_from_yml({ services: [service_instance.name] }) }
               before do
                 TestConfig.override(volume_services_enabled: true)
-                allow(service_cred_binding_create).to receive(:bind).and_return({ async: false })
               end
 
               it 'passes the volume_services_enabled_flag to ServiceBindingCreate' do
@@ -850,8 +851,14 @@ module VCAP::CloudController
 
             context 'bind happens async' do
               context 'action starts async binding' do
+                let!(:binding1) { ServiceBinding.make(service_instance: service_instance, app: app) }
+                let!(:binding2) { ServiceBinding.make(service_instance: service_instance_2, app: app) }
+                let!(:binding_operation1) { ServiceBindingOperation.make(type: 'create', state: 'in_progress', service_binding: binding1) }
+                let!(:binding_operation2) { ServiceBindingOperation.make(type: 'create', state: 'in_progress', service_binding: binding2) }
+
                 before do
-                  allow(service_cred_binding_create).to receive(:bind).and_return({ async: true })
+                  allow_any_instance_of(ServiceBinding).to receive(:terminal_state?).and_call_original
+                  allow(service_cred_binding_create).to receive(:bind).and_return(binding1, binding2)
                   allow(service_cred_binding_create).to receive(:poll).and_return(V3::ServiceBindingCreate::ContinuePolling.call(1.second),
                                                                                   V3::ServiceBindingCreate::ContinuePolling.call(1.second),
                                                                                   V3::ServiceBindingCreate::PollingFinished,
@@ -866,8 +873,14 @@ module VCAP::CloudController
               end
 
               context 'async binding fails' do
+                let!(:binding1) { ServiceBinding.make(service_instance: service_instance, app: app) }
+                let!(:binding2) { ServiceBinding.make(service_instance: service_instance_2, app: app) }
+                let!(:binding_operation1) { ServiceBindingOperation.make(type: 'create', state: 'in_progress', service_binding: binding1) }
+                let!(:binding_operation2) { ServiceBindingOperation.make(type: 'create', state: 'in_progress', service_binding: binding2) }
+
                 before do
-                  allow(service_cred_binding_create).to receive(:bind).and_return({ async: true })
+                  allow_any_instance_of(ServiceBinding).to receive(:terminal_state?).and_call_original
+                  allow(service_cred_binding_create).to receive(:bind).and_return(binding1, binding2)
                   count = 0
                   allow(service_cred_binding_create).to receive(:poll) do
                     count += 1
@@ -990,8 +1003,8 @@ module VCAP::CloudController
 
                   app_apply_manifest.apply(app.guid, message)
 
-                  expect(service_cred_binding_create).to have_received(:bind).with(service_binding_1, parameters: nil)
-                  expect(service_cred_binding_create).to have_received(:bind).with(service_binding_2, parameters: { 'foo' => 'bar' })
+                  expect(service_cred_binding_create).to have_received(:bind).with(service_binding_1, parameters: nil, accepts_incomplete: true)
+                  expect(service_cred_binding_create).to have_received(:bind).with(service_binding_2, parameters: { 'foo' => 'bar' }, accepts_incomplete: true)
                 end
               end
 
@@ -1040,8 +1053,8 @@ module VCAP::CloudController
 
                   app_apply_manifest.apply(app.guid, message)
 
-                  expect(service_cred_binding_create).to have_received(:bind).with(service_binding_1, parameters: nil)
-                  expect(service_cred_binding_create).to have_received(:bind).with(service_binding_2, parameters: { 'foo' => 'bar' })
+                  expect(service_cred_binding_create).to have_received(:bind).with(service_binding_1, parameters: nil, accepts_incomplete: true)
+                  expect(service_cred_binding_create).to have_received(:bind).with(service_binding_2, parameters: { 'foo' => 'bar' }, accepts_incomplete: true)
                 end
               end
 
@@ -1061,8 +1074,8 @@ module VCAP::CloudController
 
                   app_apply_manifest.apply(app.guid, message)
 
-                  expect(service_cred_binding_create).to have_received(:bind).with(service_binding_1, parameters: nil)
-                  expect(service_cred_binding_create).to have_received(:bind).with(service_binding_2, parameters: { 'foo' => 'bar' })
+                  expect(service_cred_binding_create).to have_received(:bind).with(service_binding_1, parameters: nil, accepts_incomplete: true)
+                  expect(service_cred_binding_create).to have_received(:bind).with(service_binding_2, parameters: { 'foo' => 'bar' }, accepts_incomplete: true)
                 end
               end
 
@@ -1097,8 +1110,8 @@ module VCAP::CloudController
 
                   app_apply_manifest.apply(app.guid, message)
 
-                  expect(service_cred_binding_create).to have_received(:bind).with(service_binding_1, parameters: nil)
-                  expect(service_cred_binding_create).to have_received(:bind).with(service_binding_2, parameters: { 'foo' => 'bar' })
+                  expect(service_cred_binding_create).to have_received(:bind).with(service_binding_1, parameters: nil, accepts_incomplete: true)
+                  expect(service_cred_binding_create).to have_received(:bind).with(service_binding_2, parameters: { 'foo' => 'bar' }, accepts_incomplete: true)
                 end
               end
             end

@@ -157,8 +157,9 @@ module VCAP::CloudController
             message: binding_message)
 
           begin
-            result = action.bind(binding, parameters: binding_message.parameters)
-            if result[:async]
+            binding = action.bind(binding, parameters: binding_message.parameters, accepts_incomplete: true)
+
+            if !binding.terminal_state?
               poll_result = action.poll(binding)
               until poll_result[:finished]
                 # TODO: sleep for 'retry_after' amount or fallback to default if header was not sent
@@ -166,9 +167,7 @@ module VCAP::CloudController
                 poll_result = action.poll(binding)
               end
             end
-          rescue ServiceBrokerRespondedAsyncWhenNotAllowed,
-                 V3::ServiceBindingCreate::BindingNotRetrievable
-
+          rescue V3::ServiceBindingCreate::BindingNotRetrievable
             raise ServiceBrokerRespondedAsyncWhenNotAllowed.new('The service broker responded asynchronously, but async bindings are not supported.')
           end
         rescue => e

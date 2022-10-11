@@ -72,6 +72,7 @@ module VCAP::CloudController
             description: e.message,
           }
         )
+        binding
       end
 
       def complete_binding_and_save(binding, binding_details, last_operation)
@@ -92,6 +93,7 @@ module VCAP::CloudController
           @audit_hash,
           manifest_triggered: @manifest_triggered
         )
+        binding
       end
 
       def save_last_operation(binding, details)
@@ -116,6 +118,7 @@ module VCAP::CloudController
           }
         )
         event_repository.record_start_create(binding, @user_audit_info, @audit_hash, manifest_triggered: @manifest_triggered)
+        binding
       end
 
       def post_bind_action(binding); end
