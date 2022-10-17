@@ -864,10 +864,32 @@ module VCAP::CloudController
                                                                                   V3::ServiceBindingCreate::PollingFinished,
                                                                                   V3::ServiceBindingCreate::ContinuePolling.call(1.second),
                                                                                   V3::ServiceBindingCreate::PollingFinished)
+                  allow_any_instance_of(AppApplyManifest).to receive(:sleep)
                 end
 
                 it 'polls service bindings until they are complete' do
+                  allow(service_cred_binding_create).to receive(:poll).and_return(V3::ServiceBindingCreate::ContinuePolling.call(1.second),
+                                                                                  V3::ServiceBindingCreate::ContinuePolling.call(1.second),
+                                                                                  V3::ServiceBindingCreate::PollingFinished,
+                                                                                  V3::ServiceBindingCreate::ContinuePolling.call(1.second),
+                                                                                  V3::ServiceBindingCreate::PollingFinished)
+
                   expect(service_cred_binding_create).to receive(:poll).exactly(5).times
+                  expect(app_apply_manifest).to receive(:sleep).with(1).exactly(3).times
+
+                  app_apply_manifest.apply(app.guid, message)
+                end
+
+                it 'polls service bindings with the default sleep value' do
+                  allow(service_cred_binding_create).to receive(:poll).and_return(V3::ServiceBindingCreate::ContinuePolling.call(nil),
+                                                                                  V3::ServiceBindingCreate::ContinuePolling.call(nil),
+                                                                                  V3::ServiceBindingCreate::PollingFinished,
+                                                                                  V3::ServiceBindingCreate::ContinuePolling.call(nil),
+                                                                                  V3::ServiceBindingCreate::PollingFinished)
+
+                  expect(service_cred_binding_create).to receive(:poll).exactly(5).times
+                  expect(app_apply_manifest).to receive(:sleep).with(5).exactly(3).times
+
                   app_apply_manifest.apply(app.guid, message)
                 end
               end
@@ -880,6 +902,7 @@ module VCAP::CloudController
 
                 before do
                   allow_any_instance_of(ServiceBinding).to receive(:terminal_state?).and_call_original
+                  allow_any_instance_of(AppApplyManifest).to receive(:sleep)
                   allow(service_cred_binding_create).to receive(:bind).and_return(binding1, binding2)
                   count = 0
                   allow(service_cred_binding_create).to receive(:poll) do
@@ -894,6 +917,7 @@ module VCAP::CloudController
 
                 it 'polls service bindings until they are complete' do
                   expect(service_cred_binding_create).to receive(:poll).exactly(3).times
+                  expect(app_apply_manifest).to receive(:sleep).with(1).exactly(2).times
                   expect {
                     app_apply_manifest.apply(app.guid, message)
                   }.to raise_error(AppApplyManifest::ServiceBindingError)

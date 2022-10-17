@@ -15,6 +15,7 @@ module VCAP::CloudController
     class ServiceBindingError < StandardError; end
     class ServiceBrokerRespondedAsyncWhenNotAllowed < StandardError; end
     SERVICE_BINDING_TYPE = 'app'.freeze
+    DEFAULT_POLLING_INTERVAL = 5
 
     def initialize(user_audit_info)
       @user_audit_info = user_audit_info
@@ -164,6 +165,7 @@ module VCAP::CloudController
               until poll_result[:finished]
                 # TODO: sleep for 'retry_after' amount or fallback to default if header was not sent
                 # TODO: dont create bindings serially
+                sleep poll_result[:retry_after] || DEFAULT_POLLING_INTERVAL
                 poll_result = action.poll(binding)
               end
             end
