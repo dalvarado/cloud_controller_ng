@@ -14,8 +14,10 @@ module VCAP::CloudController
     class NoDefaultDomain < StandardError; end
     class ServiceBindingError < StandardError; end
     class ServiceBrokerRespondedAsyncWhenNotAllowed < StandardError; end
+    class MaximumPollingDurationExceeded < StandardError; end
     SERVICE_BINDING_TYPE = 'app'.freeze
-    DEFAULT_POLLING_INTERVAL = 5
+    DEFAULT_POLLING_INTERVAL = 5.seconds
+    MAXIMUM_POLLING_DURATION = 5.minutes
 
     def initialize(user_audit_info)
       @user_audit_info = user_audit_info
@@ -162,13 +164,15 @@ module VCAP::CloudController
 
             if !binding.terminal_state?
               poll_result = action.poll(binding)
-              until poll_result[:finished]
-                # TODO: sleep for 'retry_after' amount or fallback to default if header was not sent
+
+              start = Time.now
+              until poll_result[:finished] && start < (start + MAXIMUM_POLLING_DURATION)
                 # TODO: dont create bindings serially
                 sleep poll_result[:retry_after] || DEFAULT_POLLING_INTERVAL
                 poll_result = action.poll(binding)
               end
             end
+            raise MaximumPollingDurationExceeded.new("Polling exceeded the maximum duration of #{MAXIMUM_POLLING_DURATION}") if !poll_result[:finished]
           rescue V3::ServiceBindingCreate::BindingNotRetrievable
             raise ServiceBrokerRespondedAsyncWhenNotAllowed.new('The service broker responded asynchronously, but async bindings are not supported.')
           end

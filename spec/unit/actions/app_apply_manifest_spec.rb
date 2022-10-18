@@ -894,6 +894,13 @@ module VCAP::CloudController
                 end
               end
 
+              it 'verifies exception is throws if maximum polling duration is exceeded' do
+                allow(service_cred_binding_create).to receive(:poll).and_return(V3::ServiceBindingCreate::ContinuePolling.call(6.minutes))
+                Timecop.freeze(601.seconds.after(Time.now)) do
+                  expect { app_apply_manifest.apply(app.guid, message) }.to raise_error(AppApplyManifest::ServiceBindingError)
+                end
+              end
+
               context 'async binding fails' do
                 let!(:binding1) { ServiceBinding.make(service_instance: service_instance, app: app) }
                 let!(:binding2) { ServiceBinding.make(service_instance: service_instance_2, app: app) }
