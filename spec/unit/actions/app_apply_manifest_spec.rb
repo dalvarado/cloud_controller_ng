@@ -892,13 +892,24 @@ module VCAP::CloudController
 
                   app_apply_manifest.apply(app.guid, message)
                 end
-              end
 
-              it 'verifies exception is throws if maximum polling duration is exceeded' do
-                allow(service_cred_binding_create).to receive(:poll).and_return(V3::ServiceBindingCreate::ContinuePolling.call(6.minutes))
-                Timecop.freeze(601.seconds.after(Time.now)) do
-                  expect { app_apply_manifest.apply(app.guid, message) }.to raise_error(AppApplyManifest::ServiceBindingError)
+                it 'verifies exception is thrown if maximum polling duration is exceeded' do
+                  allow(service_cred_binding_create).to receive(:poll).and_return(V3::ServiceBindingCreate::ContinuePolling.call(6.seconds))
+                  Timecop.scale(600) do
+                    expect { app_apply_manifest.apply(app.guid, message) }.to raise_error(AppApplyManifest::ServiceBindingError)
+                  end
                 end
+
+                it 'has a maximum retry_after' do
+                  allow(service_cred_binding_create).to receive(:poll).and_return(V3::ServiceBindingCreate::ContinuePolling.call(24.hours),
+                                                                                  V3::ServiceBindingCreate::PollingFinished)
+                  expect(app_apply_manifest).to receive(:sleep).with(60)
+
+                  Timecop.scale(600) do
+                    app_apply_manifest.apply(app.guid, message)
+                  end
+                end
+
               end
 
               context 'async binding fails' do
