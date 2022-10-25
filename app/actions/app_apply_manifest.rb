@@ -18,7 +18,6 @@ module VCAP::CloudController
     SERVICE_BINDING_TYPE = 'app'.freeze
     DEFAULT_POLLING_INTERVAL = 5.seconds
     MAX_POLLING_INTERVAL = 60
-    MAXIMUM_POLLING_DURATION = 5.minutes
 
     def initialize(user_audit_info)
       @user_audit_info = user_audit_info
@@ -166,13 +165,13 @@ module VCAP::CloudController
               poll_result = action.poll(binding)
 
               start = Time.now
-              while !poll_result[:finished] && Time.now < (start + MAXIMUM_POLLING_DURATION)
-                # TODO: dont create bindings serially
+              while !poll_result[:finished] && Time.now < (start + max_polling_duration)
                 retry_after = poll_result[:retry_after] || DEFAULT_POLLING_INTERVAL
                 sleep [retry_after, MAX_POLLING_INTERVAL].min
                 poll_result = action.poll(binding)
               end
-              raise MaximumPollingDurationExceeded.new("Polling exceeded the maximum duration of #{MAXIMUM_POLLING_DURATION}") if !poll_result[:finished]
+              #TODO:  whjat happens with a timed out binding?  Do we need to clean up?
+              raise MaximumPollingDurationExceeded.new("Polling exceeded the maximum duration of #{max_polling_duration}") if !poll_result[:finished]
             end
           rescue V3::ServiceBindingCreate::BindingNotRetrievable
             raise ServiceBrokerRespondedAsyncWhenNotAllowed.new('The service broker responded asynchronously, but async bindings are not supported.')

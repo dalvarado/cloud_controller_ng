@@ -2,7 +2,7 @@ require 'spec_helper'
 require 'actions/app_apply_manifest'
 
 module VCAP::CloudController
-  RSpec.describe AppApplyManifest do
+  RSpec.describe AppApplyManifest, job_context: :worker do
     context 'when everything is mocked out' do
       subject(:app_apply_manifest) { AppApplyManifest.new(user_audit_info) }
       let(:user_audit_info) { instance_double(UserAuditInfo) }
@@ -894,10 +894,14 @@ module VCAP::CloudController
                 end
 
                 it 'verifies exception is thrown if maximum polling duration is exceeded' do
-                  allow(service_cred_binding_create).to receive(:poll).and_return(V3::ServiceBindingCreate::ContinuePolling.call(6.seconds))
-                  Timecop.scale(600) do
-                    expect { app_apply_manifest.apply(app.guid, message) }.to raise_error(AppApplyManifest::ServiceBindingError)
+                  TestConfig.override(max_manifest_service_binding_poll_duration: 15)
+                  allow_any_instance_of(AppApplyManifest).to receive(:sleep) do |action, seconds|
+                    Timecop.travel(seconds.from_now)
                   end
+                  allow(service_cred_binding_create).to receive(:poll).and_return(V3::ServiceBindingCreate::ContinuePolling.call(20.seconds),
+                                                                                  V3::ServiceBindingCreate::ContinuePolling.call(20.seconds),
+                                                                                  V3::ServiceBindingCreate::PollingFinished)
+                  expect { app_apply_manifest.apply(app.guid, message) }.to raise_error(AppApplyManifest::ServiceBindingError)
                 end
 
                 it 'has a maximum retry_after' do
